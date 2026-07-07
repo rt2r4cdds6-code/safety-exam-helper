@@ -85,7 +85,6 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
         questionStore.createIndex('by-chapter', 'chapter')
         questionStore.createIndex('by-type', 'type')
         questionStore.createIndex('by-difficulty', 'difficulty')
-        questionStore.createIndex('by-isRealQuestion', 'isRealQuestion')
 
         realQuestions.forEach((question) => {
           questionStore.put(question)

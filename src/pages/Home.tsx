@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Target, Clock, CheckCircle, TrendingUp, BookOpen, AlertCircle, Award, ArrowRight, CheckCircle2, AlertTriangle, X, Bell } from 'lucide-react'
+import { Target, CheckCircle, TrendingUp, BookOpen, AlertCircle, Award, ArrowRight, CheckCircle2, AlertTriangle, X, Bell } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { generateDailyTask, updateDailyTaskChapter, getStudyProgressByStatus, getRealAndVariantQuestions, checkYesterdayTaskCompletion, findWeakChapters, checkLongTimeNoStudy } from '../db'
 import type { DailyTask, WeakChapter } from '../types'
@@ -12,7 +12,6 @@ export default function Home() {
   const [showYesterdayWarning, setShowYesterdayWarning] = useState(false)
   const [weakChapters, setWeakChapters] = useState<WeakChapter[]>([])
   const [showLongTimeWarning, setShowLongTimeWarning] = useState(false)
-  const [notificationPermission, setNotificationPermission] = useState('default')
 
   const navigate = useNavigate()
 
@@ -20,7 +19,6 @@ export default function Home() {
     const checkPermissions = async () => {
       if ('Notification' in window) {
         const permission = await Notification.requestPermission()
-        setNotificationPermission(permission)
         
         if (permission === 'granted') {
           const longTimeNoStudy = await checkLongTimeNoStudy()

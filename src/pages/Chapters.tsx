@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Plus, ChevronRight, Edit3, Trash2, BookOpen, FileText } from 'lucide-react'
+import { Search, Plus, Edit3, Trash2, BookOpen, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { getChaptersWithQuestionCount, addChapter, deleteChapter, generateId } from '../db'
 import type { Chapter } from '../types'

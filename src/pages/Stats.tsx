@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, BookOpen, Award, Calendar, Target, Clock, CheckCircle, BarChart3 } from 'lucide-react'
+import { BookOpen, Award, Calendar, Target, Clock, CheckCircle, BarChart3 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
 import { getExamRecords, getDailyTasks, getChapters, getStudyProgressByStatus } from '../db'
 import type { ExamRecord, DailyTask, Chapter } from '../types'

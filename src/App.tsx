@@ -1,4 +1,5 @@
-import { Routes, Route, useEffect } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Questions from './pages/Questions'

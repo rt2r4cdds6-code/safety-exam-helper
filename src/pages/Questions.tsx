@@ -365,7 +365,7 @@ export default function Questions() {
                     <input
                       type="radio"
                       checked={newQuestion.isRealQuestion}
-                      onChange={(e) => setNewQuestion({ ...newQuestion, isRealQuestion: true })}
+                      onChange={() => setNewQuestion({ ...newQuestion, isRealQuestion: true })}
                       className="w-4 h-4 text-primary-500"
                     />
                     <span className="text-sm">是</span>
@@ -374,7 +374,7 @@ export default function Questions() {
                     <input
                       type="radio"
                       checked={!newQuestion.isRealQuestion}
-                      onChange={(e) => setNewQuestion({ ...newQuestion, isRealQuestion: false, tags: [...newQuestion.tags.filter(t => t !== '变型题')] })}
+                      onChange={() => setNewQuestion({ ...newQuestion, isRealQuestion: false, tags: [...newQuestion.tags.filter(t => t !== '变型题')] })}
                       className="w-4 h-4 text-primary-500"
                     />
                     <span className="text-sm">否</span>

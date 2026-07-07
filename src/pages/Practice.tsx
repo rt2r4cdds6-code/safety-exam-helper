@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, BookOpen, Clock, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
-import { updateChapterAccuracy, getChapterById, getRealAndVariantQuestions } from '../db'
+import { updateChapterAccuracy, getRealAndVariantQuestions } from '../db'
 import type { Question } from '../types'
 
 const chapterQuestions: Record<string, Question[]> = {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Play, Clock, Flag, CheckCircle, XCircle, RotateCcw, ArrowRight, FileText, ChevronRight } from 'lucide-react'
+import { Play, Clock, Flag, CheckCircle, XCircle, RotateCcw, FileText, ChevronRight } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { getRealAndVariantQuestions, addExamRecord, getExamRecords, generateId } from '../db'
 import type { Question, ExamRecord } from '../types'
@@ -44,6 +44,50 @@ export default function Exam() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const durationRef = useRef(0)
   const endExamRef = useRef<() => Promise<void>>(async () => {})
+
+  const endExam = useCallback(async () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    
+    const correctAnswers: Record<string, string | string[]> = {}
+    let correctCount = 0
+
+    questions.forEach((q) => {
+      correctAnswers[q.id] = q.answer
+      const userAnswer = answers[q.id]
+      if (Array.isArray(q.answer)) {
+        if (Array.isArray(userAnswer) &&
+          q.answer.length === userAnswer.length &&
+          q.answer.every((a) => userAnswer.includes(a))) {
+          correctCount++
+        }
+      } else if (userAnswer === q.answer) {
+        correctCount++
+      }
+    })
+
+    const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
+
+    const record: ExamRecord = {
+      id: generateId(),
+      title: `模拟考试 ${new Date().toLocaleString('zh-CN')}`,
+      subject: selectedSubject,
+      questionCount: selectedQuestionCount,
+      durationLimit: selectedDuration,
+      questions: questions.map((q) => q.id),
+      userAnswers: answers,
+      correctAnswers,
+      score,
+      totalScore: 100,
+      duration,
+      createdAt: Date.now(),
+    }
+
+    await addExamRecord(record)
+    setStatus('finished')
+    
+    const records = await getExamRecords()
+    setExamRecords(records.reverse())
+  }, [questions, answers, duration, selectedSubject, selectedQuestionCount, selectedDuration])
 
   useEffect(() => {
     const loadRecords = async () => {
@@ -135,50 +179,6 @@ export default function Exam() {
     setFlagged(new Set())
     setStatus('ongoing')
   }
-
-  const endExam = useCallback(async () => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    
-    const correctAnswers: Record<string, string | string[]> = {}
-    let correctCount = 0
-
-    questions.forEach((q) => {
-      correctAnswers[q.id] = q.answer
-      const userAnswer = answers[q.id]
-      if (Array.isArray(q.answer)) {
-        if (Array.isArray(userAnswer) &&
-          q.answer.length === userAnswer.length &&
-          q.answer.every((a) => userAnswer.includes(a))) {
-          correctCount++
-        }
-      } else if (userAnswer === q.answer) {
-        correctCount++
-      }
-    })
-
-    const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
-
-    const record: ExamRecord = {
-      id: generateId(),
-      title: `模拟考试 ${new Date().toLocaleString('zh-CN')}`,
-      subject: selectedSubject,
-      questionCount: selectedQuestionCount,
-      durationLimit: selectedDuration,
-      questions: questions.map((q) => q.id),
-      userAnswers: answers,
-      correctAnswers,
-      score,
-      totalScore: 100,
-      duration,
-      createdAt: Date.now(),
-    }
-
-    await addExamRecord(record)
-    setStatus('finished')
-    
-    const records = await getExamRecords()
-    setExamRecords(records.reverse())
-  }, [questions, answers, duration, selectedSubject, selectedQuestionCount, selectedDuration])
 
   const handleOptionClick = (option: string) => {
     const currentQuestion = questions[currentIndex]
