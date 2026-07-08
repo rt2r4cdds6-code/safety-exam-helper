@@ -79,7 +79,7 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
   if (db) return db
 
   db = await openDB<SafetyExamDB>('SafetyExamDB', 6, {
-    upgrade(database, oldVersion) {
+    upgrade(database) {
       if (!database.objectStoreNames.contains('questions')) {
         const questionStore = database.createObjectStore('questions', { keyPath: 'id' })
         questionStore.createIndex('by-chapter', 'chapter')
@@ -88,15 +88,6 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
 
         realQuestions.forEach((question) => {
           questionStore.put(question)
-        })
-      } else if (oldVersion < 6) {
-        const questionStore = database.transaction('questions', 'readwrite').objectStore('questions')
-        questionStore.count().then((count) => {
-          if (count === 0) {
-            realQuestions.forEach((question) => {
-              questionStore.put(question)
-            })
-          }
         })
       }
 
@@ -114,57 +105,9 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
         dailyTaskStore.createIndex('by-date', 'date')
       }
 
-      if (oldVersion < 3 && database.objectStoreNames.contains('dailyTasks')) {
-        const dailyTaskStore = database.transaction('dailyTasks', 'readwrite').objectStore('dailyTasks')
-        dailyTaskStore.openCursor().then(async (cursor) => {
-          while (cursor) {
-            const task = cursor.value
-            if (!task.chapters) {
-              task.chapters = []
-              await cursor.update(task)
-            }
-            cursor = await cursor.continue()
-          }
-        })
-      }
-
-      if (oldVersion < 4 && database.objectStoreNames.contains('dailyTasks')) {
-        const dailyTaskStore = database.transaction('dailyTasks', 'readwrite').objectStore('dailyTasks')
-        dailyTaskStore.openCursor().then(async (cursor) => {
-          while (cursor) {
-            const task = cursor.value
-            if (task.chapters) {
-              task.chapters = task.chapters.map((ch: any) => ({
-                ...ch,
-                accuracy: ch.accuracy || undefined,
-                isWeak: ch.isWeak || false,
-              }))
-              await cursor.update(task)
-            }
-            cursor = await cursor.continue()
-          }
-        })
-      }
-
       if (!database.objectStoreNames.contains('examRecords')) {
         const examRecordStore = database.createObjectStore('examRecords', { keyPath: 'id' })
         examRecordStore.createIndex('by-createdAt', 'createdAt')
-      }
-
-      if (oldVersion < 5 && database.objectStoreNames.contains('examRecords')) {
-        const examRecordStore = database.transaction('examRecords', 'readwrite').objectStore('examRecords')
-        examRecordStore.openCursor().then(async (cursor) => {
-          while (cursor) {
-            const record = cursor.value
-            if (!record.subject) {
-              record.subject = '全部科目'
-              record.questionCount = record.questions?.length || 20
-              record.durationLimit = 60
-              await cursor.update(record)
-            }
-            cursor = await cursor.continue()
-          }
-        })
       }
 
       if (!database.objectStoreNames.contains('studyProgress')) {
@@ -173,9 +116,36 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
         studyProgressStore.createIndex('by-status', 'status')
       }
     },
+    async blocked() {
+      const dbExists = await new Promise<boolean>((resolve) => {
+        const request = indexedDB.databases()
+        request.then((dbs) => {
+          const exists = dbs.some((db) => db.name === 'SafetyExamDB')
+          resolve(exists)
+        }).catch(() => resolve(false))
+      })
+      
+      if (dbExists) {
+        indexedDB.deleteDatabase('SafetyExamDB')
+      }
+    },
   })
 
+  await ensureQuestionsExist(db)
+
   return db
+}
+
+async function ensureQuestionsExist(database: IDBPDatabase<SafetyExamDB>): Promise<void> {
+  const count = await database.count('questions')
+  if (count === 0) {
+    const tx = database.transaction('questions', 'readwrite')
+    const store = tx.objectStore('questions')
+    for (const question of realQuestions) {
+      await store.put(question)
+    }
+    await tx.done
+  }
 }
 
 export async function addQuestion(question: Question): Promise<void> {
