@@ -78,7 +78,7 @@ let db: IDBPDatabase<SafetyExamDB> | null = null
 export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
   if (db) return db
 
-  db = await openDB<SafetyExamDB>('SafetyExamDB', 5, {
+  db = await openDB<SafetyExamDB>('SafetyExamDB', 6, {
     upgrade(database, oldVersion) {
       if (!database.objectStoreNames.contains('questions')) {
         const questionStore = database.createObjectStore('questions', { keyPath: 'id' })
@@ -88,6 +88,15 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
 
         realQuestions.forEach((question) => {
           questionStore.put(question)
+        })
+      } else if (oldVersion < 6) {
+        const questionStore = database.transaction('questions', 'readwrite').objectStore('questions')
+        questionStore.count().then((count) => {
+          if (count === 0) {
+            realQuestions.forEach((question) => {
+              questionStore.put(question)
+            })
+          }
         })
       }
 
