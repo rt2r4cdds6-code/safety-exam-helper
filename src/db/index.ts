@@ -78,18 +78,20 @@ let db: IDBPDatabase<SafetyExamDB> | null = null
 export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
   if (db) return db
 
-  db = await openDB<SafetyExamDB>('SafetyExamDB', 6, {
+  db = await openDB<SafetyExamDB>('SafetyExamDB', 11, {
     upgrade(database) {
       if (!database.objectStoreNames.contains('questions')) {
         const questionStore = database.createObjectStore('questions', { keyPath: 'id' })
         questionStore.createIndex('by-chapter', 'chapter')
         questionStore.createIndex('by-type', 'type')
         questionStore.createIndex('by-difficulty', 'difficulty')
-
-        realQuestions.forEach((question) => {
-          questionStore.put(question)
-        })
       }
+
+      const questionTx = database.transaction('questions', 'readwrite')
+      const questionStore = questionTx.objectStore('questions')
+      realQuestions.forEach((question) => {
+        questionStore.put(question)
+      })
 
       if (!database.objectStoreNames.contains('chapters')) {
         const chapterStore = database.createObjectStore('chapters', { keyPath: 'id' })
@@ -137,11 +139,16 @@ export async function getDB(): Promise<IDBPDatabase<SafetyExamDB>> {
 }
 
 async function ensureQuestionsExist(database: IDBPDatabase<SafetyExamDB>): Promise<void> {
-  const count = await database.count('questions')
-  if (count === 0) {
+  const existingIds = new Set<string>()
+  const allQuestions = await database.getAll('questions')
+  allQuestions.forEach((q) => existingIds.add(q.id))
+
+  const newQuestions = realQuestions.filter((q) => !existingIds.has(q.id))
+  
+  if (newQuestions.length > 0) {
     const tx = database.transaction('questions', 'readwrite')
     const store = tx.objectStore('questions')
-    for (const question of realQuestions) {
+    for (const question of newQuestions) {
       await store.put(question)
     }
     await tx.done
@@ -199,15 +206,43 @@ export async function deleteChapter(id: string): Promise<void> {
   await database.delete('chapters', id)
 }
 
+const chapterNameToSubject: Record<string, string> = {
+  '安全生产技术': '技术',
+  '安全生产技术基础': '技术',
+  '安全生产管理': '管理',
+  '安全生产管理知识': '管理',
+  '安全生产法规': '法规',
+  '安全生产法及相关法律知识': '法规',
+  '其他安全实务': '实务',
+}
+
+function getQuestionSubject(chapterName: string): string {
+  return chapterNameToSubject[chapterName] || chapterName
+}
+
 export async function getChaptersWithQuestionCount(): Promise<(Chapter & { totalQuestions: number })[]> {
   const database = await getDB()
   const chapters = await database.getAll('chapters')
   const questions = await database.getAll('questions')
 
-  return chapters.map((chapter) => ({
-    ...chapter,
-    totalQuestions: questions.filter((q) => q.chapter === chapter.name).length,
-  }))
+  return chapters.map((chapter) => {
+    const exactMatch = questions.filter((q) => q.chapter === chapter.name).length
+    if (exactMatch > 0) {
+      return { ...chapter, totalQuestions: exactMatch }
+    }
+
+    const subjectMatch = questions.filter((q) => {
+      const questionSubject = getQuestionSubject(q.chapter)
+      return questionSubject === chapter.subject && q.chapter.includes(chapter.name.replace('安全技术', '').replace('安全实务', '').replace('安全管理', ''))
+    }).length
+
+    if (subjectMatch > 0) {
+      return { ...chapter, totalQuestions: subjectMatch }
+    }
+
+    const allSubjectMatch = questions.filter((q) => getQuestionSubject(q.chapter) === chapter.subject).length
+    return { ...chapter, totalQuestions: allSubjectMatch }
+  })
 }
 
 export async function addDailyTask(task: DailyTask): Promise<void> {

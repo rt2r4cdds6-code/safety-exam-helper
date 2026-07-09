@@ -4,6 +4,44 @@ import { ArrowLeft, BookOpen, Clock, CheckCircle, XCircle, AlertCircle, ChevronL
 import { updateChapterAccuracy, getRealAndVariantQuestions } from '../db'
 import type { Question } from '../types'
 
+const chapterNameToSubject: Record<string, string> = {
+  '安全生产技术': '技术',
+  '安全生产技术基础': '技术',
+  '安全生产管理': '管理',
+  '安全生产管理知识': '管理',
+  '安全生产法规': '法规',
+  '安全生产法及相关法律知识': '法规',
+  '其他安全实务': '实务',
+}
+
+function getQuestionSubject(chapterName: string): string {
+  return chapterNameToSubject[chapterName] || chapterName
+}
+
+function isQuestionInChapter(question: Question, chapterName: string): boolean {
+  if (question.chapter === chapterName) {
+    return true
+  }
+
+  const chapterKey = chapterName.replace('安全技术', '').replace('安全实务', '').replace('安全管理', '').replace('安全生产', '')
+  
+  if (question.chapter.includes(chapterKey) && chapterKey.length > 0) {
+    return true
+  }
+
+  const chapterSubject = chapterName.startsWith('安全生产法') ? '法规' :
+    chapterName.startsWith('危险化学品') ? (chapterName.includes('实务') ? '实务' : '法规') :
+    chapterName.includes('消防') ? '法规' :
+    chapterName.includes('特种设备') ? (chapterName.includes('实务') ? '实务' : '法规') :
+    chapterName.includes('建设工程') ? '法规' :
+    chapterName.includes('生产安全事故') ? '法规' :
+    chapterName.includes('管理') ? '管理' :
+    chapterName.includes('技术') ? '技术' :
+    chapterName.includes('实务') ? '实务' : '法规'
+
+  return getQuestionSubject(question.chapter) === chapterSubject
+}
+
 const chapterQuestions: Record<string, Question[]> = {
   '安全生产法': [
     {
@@ -295,7 +333,7 @@ export default function Practice() {
   
   const [questions, setQuestions] = useState<Question[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({})
   const [duration, setDuration] = useState(0)
   const [status, setStatus] = useState<'ready' | 'ongoing' | 'finished'>('ready')
   const [showAnalysis, setShowAnalysis] = useState(false)
@@ -310,7 +348,7 @@ export default function Practice() {
         setQuestions(shuffled.slice(0, Math.min(10, shuffled.length)))
       } else {
         const dbQuestions = await getRealAndVariantQuestions()
-        const filtered = dbQuestions.filter((q) => q.chapter === chapterName)
+        const filtered = dbQuestions.filter((q) => isQuestionInChapter(q, chapterName))
         
         if (filtered.length > 0) {
           const shuffled = [...filtered].sort(() => Math.random() - 0.5)
@@ -349,17 +387,41 @@ export default function Practice() {
   }
 
   const handleAnswer = (questionId: string, answer: string) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: answer,
-    }))
+    const question = questions.find((q) => q.id === questionId)
+    if (!question) return
+
+    if (question.type === 'multiple') {
+      const current = (answers[questionId] as string[]) || []
+      const newAnswer = current.includes(answer)
+        ? current.filter((o) => o !== answer)
+        : [...current, answer].sort()
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: newAnswer,
+      }))
+    } else {
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: answer,
+      }))
+    }
+  }
+
+  const isAnswerCorrect = (question: Question, userAnswer: string | string[] | undefined): boolean => {
+    if (!userAnswer) return false
+    if (Array.isArray(question.answer)) {
+      return Array.isArray(userAnswer) &&
+        question.answer.length === userAnswer.length &&
+        question.answer.every((a) => userAnswer.includes(a))
+    }
+    return userAnswer === question.answer
   }
 
   const calculateScore = useCallback(() => {
     if (questions.length === 0) return 0
     let correct = 0
     questions.forEach((q) => {
-      if (answers[q.id] === q.answer) {
+      if (isAnswerCorrect(q, answers[q.id])) {
         correct++
       }
     })
@@ -374,7 +436,7 @@ export default function Practice() {
     }
   }
 
-  const resetPractice = () => {
+  const resetPractice = async () => {
     setStatus('ready')
     setAnswers({})
     setDuration(0)
@@ -385,8 +447,16 @@ export default function Practice() {
       const shuffled = [...chapterQuestions[chapterName]].sort(() => Math.random() - 0.5)
       setQuestions(shuffled.slice(0, Math.min(10, shuffled.length)))
     } else {
-      const shuffled = [...defaultQuestions].sort(() => Math.random() - 0.5)
-      setQuestions(shuffled.slice(0, 10))
+      const dbQuestions = await getRealAndVariantQuestions()
+      const filtered = dbQuestions.filter((q) => isQuestionInChapter(q, chapterName))
+      
+      if (filtered.length > 0) {
+        const shuffled = [...filtered].sort(() => Math.random() - 0.5)
+        setQuestions(shuffled.slice(0, Math.min(10, shuffled.length)))
+      } else {
+        const shuffled = [...defaultQuestions].sort(() => Math.random() - 0.5)
+        setQuestions(shuffled.slice(0, 10))
+      }
     }
   }
 
@@ -406,7 +476,7 @@ export default function Practice() {
   }
 
   const currentQuestion = questions[currentIndex]
-  const isCorrect = currentQuestion ? answers[currentQuestion.id] === currentQuestion.answer : false
+  const isCorrect = currentQuestion ? isAnswerCorrect(currentQuestion, answers[currentQuestion.id]) : false
 
   return (
     <div className="p-4 pb-20">
@@ -505,7 +575,16 @@ export default function Practice() {
           <div className="space-y-2">
             {currentQuestion.options?.map((option, index) => {
               const optionLabel = String.fromCharCode(65 + index)
-              const isSelected = answers[currentQuestion.id] === optionLabel
+              const isSelected = currentQuestion.type === 'multiple'
+                ? (answers[currentQuestion.id] as string[])?.includes(optionLabel)
+                : answers[currentQuestion.id] === optionLabel
+              
+              const isCorrectAnswer = Array.isArray(currentQuestion.answer)
+                ? currentQuestion.answer.includes(optionLabel)
+                : currentQuestion.answer === optionLabel
+              
+              const userSelectedCorrectly = isSelected && isCorrectAnswer
+              const userSelectedWrong = isSelected && !isCorrectAnswer
               
               return (
                 <button
@@ -514,13 +593,13 @@ export default function Practice() {
                   disabled={showAnalysis}
                   className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
                     showAnalysis
-                      ? isSelected
-                        ? answers[currentQuestion.id] === currentQuestion.answer
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-red-500 bg-red-50'
-                        : currentQuestion.answer === optionLabel
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-100 bg-gray-50'
+                      ? userSelectedCorrectly
+                        ? 'border-green-500 bg-green-50'
+                        : userSelectedWrong
+                          ? 'border-red-500 bg-red-50'
+                          : isCorrectAnswer
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-100 bg-gray-50'
                       : isSelected
                         ? 'border-primary-500 bg-primary-50'
                         : 'border-gray-100 hover:border-primary-200 hover:bg-gray-50'
@@ -529,13 +608,13 @@ export default function Practice() {
                   <div className="flex items-start gap-3">
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0 ${
                       showAnalysis
-                        ? isSelected
-                          ? answers[currentQuestion.id] === currentQuestion.answer
-                            ? 'bg-green-500 text-white'
-                            : 'bg-red-500 text-white'
-                          : currentQuestion.answer === optionLabel
-                            ? 'bg-green-500 text-white'
-                            : 'bg-gray-100 text-gray-600'
+                        ? userSelectedCorrectly
+                          ? 'bg-green-500 text-white'
+                          : userSelectedWrong
+                            ? 'bg-red-500 text-white'
+                            : isCorrectAnswer
+                              ? 'bg-green-500 text-white'
+                              : 'bg-gray-100 text-gray-600'
                         : isSelected
                           ? 'bg-primary-500 text-white'
                           : 'bg-gray-100 text-gray-600'
@@ -562,7 +641,14 @@ export default function Practice() {
                 </span>
               </div>
               <p className="text-gray-600 text-sm">
-                <span className="font-medium">正确答案：</span>{currentQuestion.answer}
+                <span className="font-medium">正确答案：</span>
+                {Array.isArray(currentQuestion.answer) ? currentQuestion.answer.join('、') : currentQuestion.answer}
+              </p>
+              <p className="text-gray-600 text-sm mt-1">
+                <span className="font-medium">你的答案：</span>
+                {Array.isArray(answers[currentQuestion.id]) 
+                  ? (answers[currentQuestion.id] as string[]).join('、') || '未作答'
+                  : answers[currentQuestion.id] || '未作答'}
               </p>
               <p className="text-gray-600 text-sm mt-2">
                 <span className="font-medium">解析：</span>{currentQuestion.analysis}
@@ -666,13 +752,13 @@ export default function Practice() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-green-500">
-                  {questions.filter((q) => answers[q.id] === q.answer).length}
+                  {questions.filter((q) => isAnswerCorrect(q, answers[q.id])).length}
                 </div>
                 <div className="text-sm text-gray-500">正确</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-red-500">
-                  {questions.filter((q) => answers[q.id] !== q.answer).length}
+                  {questions.filter((q) => !isAnswerCorrect(q, answers[q.id])).length}
                 </div>
                 <div className="text-sm text-gray-500">错误</div>
               </div>
@@ -690,7 +776,7 @@ export default function Practice() {
             <div className="space-y-4">
               {questions.map((q, index) => {
                 const userAnswer = answers[q.id]
-                const isCorrect = userAnswer === q.answer
+                const isCorrect = isAnswerCorrect(q, userAnswer)
                 return (
                   <div key={q.id} className={`rounded-xl p-4 ${isCorrect ? 'bg-green-50' : 'bg-red-50'}`}>
                     <div className="flex items-center gap-2 mb-2">
@@ -702,12 +788,16 @@ export default function Practice() {
                       )}
                     </div>
                     <p className="text-gray-800 text-sm mb-2">{q.content}</p>
-                    <div className="flex items-center gap-4 text-sm">
+                    <div className="flex flex-wrap gap-4 text-sm">
                       <span className="text-gray-600">
-                        你的答案：<span className={isCorrect ? 'text-green-600' : 'text-red-600'}>{userAnswer || '未作答'}</span>
+                        你的答案：<span className={isCorrect ? 'text-green-600' : 'text-red-600'}>
+                          {Array.isArray(userAnswer) ? userAnswer.join('、') || '未作答' : userAnswer || '未作答'}
+                        </span>
                       </span>
                       <span className="text-gray-600">
-                        正确答案：<span className="text-green-600 font-medium">{q.answer}</span>
+                        正确答案：<span className="text-green-600 font-medium">
+                          {Array.isArray(q.answer) ? q.answer.join('、') : q.answer}
+                        </span>
                       </span>
                     </div>
                     <p className="text-gray-500 text-xs mt-2">解析：{q.analysis}</p>
